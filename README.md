@@ -3,7 +3,7 @@ ENGG4801 Thesis Project Visualization Recommendation System Ryan Phelan 43935707
 
 Supervisor 1: Hina Khan (left UQ May 2019)
 Supervisor 2: Neil Horrocks (interim supervisor until July 2019)
-Supervisor 3: Richard Bean (CURRENT)
+Supervisor 3: Richard Bean (CURRENT SUPERVISOR)
 
 Project: 
 

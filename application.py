@@ -1,4 +1,5 @@
 import sys
+import os
 from functions import *
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtWidgets import QInputDialog, QLineEdit, QFileDialog, QGridLayout
@@ -32,6 +33,8 @@ class Window(QtWidgets.QWidget):
         self.cur1 = None
         self.cur2 = None
         self.toolBar = None
+        self.fileName = None
+        self.query = None
     
     def init_ui(self):
         """Import the QtDesigner file and assign functions to each of the UI's buttons.
@@ -57,6 +60,7 @@ class Window(QtWidgets.QWidget):
         """
         fileName = QtWidgets.QFileDialog.getOpenFileName(self, 'OpenFile')
         self.dlg.fileLocation.setText(fileName[0])
+        self.fileName = os.path.basename(self.dlg.fileLocation.text())
 
     def create_connection(self, db_file):
         """Set objects for conn1 (Connection 1) and cur1 (Connection 1's cursor)
@@ -100,11 +104,12 @@ class Window(QtWidgets.QWidget):
         Exit function if they haven't defined a filepath.
         """
         if self.dataBase is None : return
-        model = PandasModel(self.dataBase)  #Create a model of the database
+        model = PandasModel(self.dataBase.head(100))  #Create a model of the database, only show the top 100 rows.
         self.preview = QtWidgets.QWidget()  #Create the 'preview' widget
         ui = TableView()                    #Create a TableView for the UI
         ui.setupUi(self.preview, model)     #Load the model into the created widget
         self.preview.show()                 #Show the widget
+        self.preview.setWindowTitle("SELECT TOP 100 FROM " + self.fileName)
 
     def assign_as_dimension(self):
         """Take the currently selected item in columnsListWidget and assign it to a dimension.
@@ -159,6 +164,7 @@ class Window(QtWidgets.QWidget):
         TODO Need to add error checking to this so it doesn't brick when the query is bogus
         """
         query = self.dlg.refQueryInput.toPlainText()                #Get the query from the textbox
+        self.queryText = query
         print(query)
         self.dataBaseSub = pandas.read_sql_query(query, self.conn1) #Read query using pandas method
         self.create_connection2('dataBaseSub.db')                   #Create Connected 2
@@ -169,11 +175,12 @@ class Window(QtWidgets.QWidget):
         Exit function if dataBaseSub isn't defined.
         """
         if self.dataBaseSub is None : return
-        model = PandasModel(self.dataBaseSub)   #Create a model of the database
+        model = PandasModel(self.dataBaseSub.head(100))   #Create a model of the database, only get TOP 100 rows
         self.preview = QtWidgets.QWidget()      #Create a TableView for the UI
         ui = TableView()                        #Create the 'preview' widget
         ui.setupUi(self.preview, model)         #Load the model into the created widget
-        self.preview.show()                     #Show the widget          
+        self.preview.show()                     #Show the widget       
+        self.preview.setWindowTitle("SELECT TOP 100 FROM Reference DataSet")   
 
     def get_aggregate_functions(self):
         """Helper method to convert all selected aggregate function buttons into a list of strings.

@@ -1,5 +1,7 @@
 import sys
-import pandas
+import pandas as pd
+import requests
+import urllib
 
 def generateQueriesAsViewTuples(d, f, m, Dq, Dr):
     """Function that returns all possible queries required for generating recommendations.
@@ -79,6 +81,35 @@ def generateQueryRecommendations(dataFrame, dimensionAttributes, measureAttribut
             generatedQueryRecommendations.append(query)
 
     return generatedQueryRecommendations
+
+def initialiseRedbackHouse(houseId):
+    """Retrieve the first instance of a given Id's metering data.
+    i.e. get data for the first day that this house came online
+
+    Args:
+        id: the house id as an int
+
+    Return:
+        Pandas dataframe containing the data for the first day
+    """
+    #HOUSE #1	Online since   -->     "TimeStamp": "2019-08-15 15:51:19"
+    #HOUSE #2	Online since   -->     "TimeStamp": "2019-04-15 10:40:42"
+    #HOUSE #3	Online since   -->     "TimeStamp": "2019-07-31 10:50:07"
+    #HOUSE #4	Online since   -->     "TimeStamp": "2019-04-26 09:40:58"
+    days = ['15', '15', '31', '26']
+    months = ['08', '04', '07', '04']
+    years = ['2019', '2019', '2019', '2019']
+    housenumber = str(houseId)
+    index = houseId - 1
+    url = "https://ouijalitedatarequest.azurewebsites.net/api/DataCacheRequest?"
+    code = 'hQ1gF6gA0Bo5zn/i4NkBWutZ/3nA0a5LUFAHUFNLKD8f5IV2Uac4FA=='
+    df = pd.DataFrame()
+    params = {'day':days[index],'month':months[index],'year':years[index],'housenumber':housenumber,'code':code}
+    r = requests.get(url, params=params)
+    df = pd.DataFrame.from_dict(r.json())
+    return df
+
+
     
 
 

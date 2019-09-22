@@ -1,5 +1,6 @@
 import sys
 import os
+import datetime
 from functions import *
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtWidgets import QInputDialog, QLineEdit, QFileDialog, QGridLayout
@@ -24,14 +25,17 @@ class Window(QtWidgets.QWidget):
         self.init_ui()
         self.dataBase = None
         self.dataBaseSub = None
+        self.dynamicDataBase = None
         self.preview = None
         self.recommendations = None
         self.dimensions = None
         self.measures = None
         self.conn1 = None
         self.conn2 = None
+        self.dynaConn = None
         self.cur1 = None
         self.cur2 = None
+        self.dynaCursor = None
         self.toolBar = None
         self.fileName = None
         self.query = None
@@ -70,7 +74,6 @@ class Window(QtWidgets.QWidget):
         try:
             self.conn1 = sqlite3.connect(db_file)   #Set Connection 1
             self.cur1 = self.conn1.cursor()         #Set Cursor 1
-            print(sqlite3.version)
         except Error as e:
             print(e)
 
@@ -84,9 +87,21 @@ class Window(QtWidgets.QWidget):
         try:
             self.conn2 = sqlite3.connect(db_file)   #Set Connection 2
             self.cur2 = self.conn1.cursor()         #Set Cursor 2
-            print(sqlite3.version)
         except Error as e:
             print(e)
+
+    def create_dynamic_connection(self, db_file):
+        """Set objects for dynaConn (dynamic connection) and dynaCursor (Dynamic connection's cursor)
+        This set creates a connection to the current dynamic data source.
+
+        Args:
+            db_file: the dynamic data file being connected to.
+        """
+        try:
+            self.dynaConn = sqlite3.connect(db_file)   #Set Dynamic Connection
+            self.dynaCursor = self.dynaConn.cursor()   #Set Dyanamic Cursor
+        except Error as e:
+            print(e)        #TODO print errors out to a make shift terminal
 
     def import_file(self):
         """Import csv, Retrieve column names, create the connection, convert database to SQL.
@@ -95,8 +110,9 @@ class Window(QtWidgets.QWidget):
         if not filePath : return                     #Check if not null
         self.dataBase = pandas.read_csv(filePath, encoding = "ISO-8859-1") #Create the pandas dataframe using .read_csv
         self.dlg.columnsListWidget.addItems(self.dataBase.columns)  #Add the column names to the columnsListWidget
-        self.create_connection('dataBaseRef.db')     #Create the connection to dataBaseRef.db
+        self.create_connection('databases/dataBaseRef.db')     #Create the connection to dataBaseRef.db
         self.dataBase.to_sql("dataBaseRef", self.conn1, if_exists='replace', index=False) #Convert to SQL database
+        
 
     def preview_file(self):
         """Load the database into a temporary widget to let the user 'preview' their data and ensure its correctness.
@@ -166,7 +182,7 @@ class Window(QtWidgets.QWidget):
         self.queryText = query
         print(query)
         self.dataBaseSub = pandas.read_sql_query(query, self.conn1) #Read query using pandas method
-        self.create_connection2('dataBaseSub.db')                   #Create Connected 2
+        self.create_connection2('databases/dataBaseSub.db')                   #Create Connected 2
         self.dataBaseSub.to_sql("dataBaseSub", self.conn2, if_exists='replace', index=False) #Make database SQL
 
     def preview_ref_query(self):
@@ -281,11 +297,24 @@ class Window(QtWidgets.QWidget):
 
     def connectToHouse(self):
         idString = self.dlg.houseidComboBox.currentText()   #get currently selected house ID
-        houseId = int(idString.split()[2])                  #convert string to an integer
-        
-        print(houseId)
-        print("Connecting to house")
-
+        houseId = int(idString.split()[2])  #convert id string to an integer, split string to get at number
+        date = str(datetime.date.today())   #today's date
+        currentDate = datetime.datetime.strptime(date, "%Y-%m-%d") #date object that can return day, month, year
+        #Check that the databases folder exists, if not, create it
+        if not os.path.isdir('./databases') :
+            os.mkdir("./databases")
+        #Connect to the dynamic dataset, the name of the database will be based on the house ID
+        houseDatabaseString = "databases/id" + str(houseId) + ".db"
+        self.create_dynamic_connection(houseDatabaseString)
+        #If the database is empty, initialise the first day for the given ID 
+        result = self.dynaCursor.fetchone()
+        if result == None :
+            self.dynamicDataBase = initialiseRedbackHouse(houseId)
+            self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='fail', index=False)
+            
+        self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='append', index=False)
+        testFrame = pandas.read_sql("SELECT * FROM id"+str(houseId), self.dynaConn)
+        testFrame.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\testFrame.csv', header=True)
 
 class PandasModel(QtCore.QAbstractTableModel):
     """

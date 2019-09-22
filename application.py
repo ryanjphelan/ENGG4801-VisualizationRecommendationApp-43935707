@@ -52,8 +52,7 @@ class Window(QtWidgets.QWidget):
         self.dlg.executeRefQueryButton.clicked.connect(self.execute_ref_query)
         self.dlg.previewRefQueryButton.clicked.connect(self.preview_ref_query)
         self.dlg.generateVisualizationsButton.clicked.connect(self.outputToPane)
-        #self.dlg.MplWidget.addToolBar(NavigationToolbar(self.dlg.MplWidget.canvas, self))
-        #self.toolBar = self.dlg.addToolBar(NavigationToolbar(self.dlg.MplWidget.canvas, self))
+        self.dlg.connectToHouseButton.clicked.connect(self.connectToHouse)
 
     def browse_for_file(self):
         """Open a windows File-Dialog to allow the user to simultaneously define the filepath and the filename
@@ -94,7 +93,7 @@ class Window(QtWidgets.QWidget):
         """
         filePath = self.dlg.fileLocation.text()      #Select the file path directly from the textbox
         if not filePath : return                     #Check if not null
-        self.dataBase = pandas.read_csv(filePath)    #Create the pandas dataframe using .read_csv
+        self.dataBase = pandas.read_csv(filePath, encoding = "ISO-8859-1") #Create the pandas dataframe using .read_csv
         self.dlg.columnsListWidget.addItems(self.dataBase.columns)  #Add the column names to the columnsListWidget
         self.create_connection('dataBaseRef.db')     #Create the connection to dataBaseRef.db
         self.dataBase.to_sql("dataBaseRef", self.conn1, if_exists='replace', index=False) #Convert to SQL database
@@ -195,8 +194,6 @@ class Window(QtWidgets.QWidget):
         if self.dlg.minButton.isChecked() : functions.append(self.dlg.minButton.text())     #MIN
         if self.dlg.maxButton.isChecked() : functions.append(self.dlg.maxButton.text())     #MAX
         if self.dlg.sumButton.isChecked() : functions.append(self.dlg.sumButton.text())     #SUM
-        if self.dlg.otherFunctionButton.currentText() != 'other...' :  #STDEV, MEDIAN, MODE, or RANGE
-            functions.append(self.dlg.otherFunctionButton.currentText())
         return functions
     
     def calculate_utility(self, combinedDataFrame):
@@ -211,6 +208,7 @@ class Window(QtWidgets.QWidget):
         return item[1]
 
     def calculate_all_utilities(self, queriesTuple):
+        print("Starting : calculate_all_utilities")
         #The return list that will have a list of tuples containing the dataframe and its calculated utility
         allViews = []
         #Loop through all of the tuples
@@ -231,39 +229,33 @@ class Window(QtWidgets.QWidget):
             combined.fillna(0, inplace=True)
             combined.sort_values(by=[combined.columns[0]])
             utility = self.calculate_utility(combined)
-            view = (combined, utility)
-            print(view)
+            title = queryTar + '\n' +queryRef
+            view = (title, combined, utility)
+            print(queryTar + '\n' +queryRef)
+            #print(view)
             allViews.append(view)
 
-        sortedViews = sorted(allViews, key = lambda x: x[1])
+        sortedViews = sorted(allViews, key = lambda x: x[2])
+        print("Ended : calculate_all_utilities")
         return sortedViews
         
     def plot_visualizations(self, allViews):
-        #Loop through all the views until the number of plots equals k
+        print("Starting : plot_visualizations")
+        plt.clf()
         k = int(str(self.dlg.kValueBox.currentText()))
-        numberOfPlots = k
-        """ax = self.dlg.MplWidget.setAxes(k)"""
-        ax = self.dlg.MplWidget.setAxes(1)
-        self.dlg.MplWidget.canvas.axes.clear()
-        """for view, utility in allViews:
-            if k == numberOfPlots:
-                view.plot.bar(rot=0, ax=ax)
-                k = k - 1
-                continue
-            elif k == 0:
-                break
-            else:
-                ax = self.dlg.MplWidget.getAxes(numberOfPlots - (k - 1))
-                view.plot.bar(rot=0, ax=ax)
-                k = k - 1
-            """
-        allViews[0][0].plot.bar(rot=0, ax=ax)
+        print(k)
+        self.dlg.MplWidget.canvas.figure.clf()
+        ax = self.dlg.MplWidget.setAxes(1) #set the axes to have a single subplot.
+        #self.dlg.MplWidget.canvas.axes.clear()
+        ax.title.set_size(40)
+        allViews[0][1].plot.bar(rot=0, ax=ax, title=allViews[0][0])
+        plt.axes().xaxis.set_label_text("HI THERE THIS WORKS?")
         self.dlg.MplWidget.canvas.draw()
-        #self.dlg.MplWidget.canvas.draw()
-
+        print("Ended : plot_visualizations")
 
 
     def outputToPane(self):
+        print("Starting : outputToPane")
         #Get the list of dimension attributes
         self.dimensions = []
         for index in range(self.dlg.dimensionsListWidget.count()):
@@ -274,18 +266,25 @@ class Window(QtWidgets.QWidget):
             self.measures.append(self.dlg.measuresListWidget.item(index).text())
         #Generate the list of aggregate functions
         aggregateFunctions = self.get_aggregate_functions()
-        #print("%s, %s, %s, %s, %s", (self.dimensions, aggregateFunctions, self.measures, "dataBaseSub", "dataBaseRef"))
         #Checks and balances to ensure that the queries should be generated and not error
         if not aggregateFunctions or not self.dimensions or not self.measures :
             return
         queries = generateQueriesAsViewTuples(self.dimensions, aggregateFunctions, self.measures, "dataBaseSub", "dataBaseRef")
         allViews = self.calculate_all_utilities(queries)
         self.plot_visualizations(allViews)
+        print("Ended : outputToPane")
         #self . MplWidget . canvas . axes . legend (( 'cosinus' ,  'sinus' ),loc = 'upper right' ) 
         #self . MplWidget . canvas . axes . set_title ( ' Cosinus - Sinus Signal' ) 
         #self.dlg.visualsPane.addItems(ax)
         #for view in queries:
         #    print (view)
+
+    def connectToHouse(self):
+        idString = self.dlg.houseidComboBox.currentText()   #get currently selected house ID
+        houseId = int(idString.split()[2])                  #convert string to an integer
+        
+        print(houseId)
+        print("Connecting to house")
 
 
 class PandasModel(QtCore.QAbstractTableModel):

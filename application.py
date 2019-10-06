@@ -6,6 +6,7 @@ from functions import *
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtWidgets import QInputDialog, QLineEdit, QFileDialog, QGridLayout
 from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import pyqtSignal
 #from PyQt5 import QtCore, QtGui, QtWidgets, uic 
 #from PyQt5.QtGui import QFileDialog
 import pandas
@@ -40,6 +41,8 @@ class Window(QtWidgets.QWidget):
         self.toolBar = None
         self.fileName = None
         self.query = None
+        self.threadClass1 = None
+        self.threadRunning = False
         self.dlg.myConsole.setFontPointSize(8)
         self.dlg.myConsole.setText(self.dlg.myConsole.toPlainText() + "\n")
 
@@ -61,6 +64,7 @@ class Window(QtWidgets.QWidget):
         self.dlg.previewRefQueryButton.clicked.connect(self.preview_ref_query)
         self.dlg.generateVisualizationsButton.clicked.connect(self.outputToPane)
         self.dlg.connectToHouseButton.clicked.connect(self.connectToHouse)
+        self.dlg.closeDynamicConnectionButton.clicked.connect(self.closeDynamicConnection)
 
     def browse_for_file(self):
         """Open a windows File-Dialog to allow the user to simultaneously define the filepath and the filename
@@ -301,6 +305,9 @@ class Window(QtWidgets.QWidget):
         #    print (view)
 
     def connectToHouse(self):
+        if self.threadRunning : 
+            self.addLineToConsole("Connection is already running. Press 'Close Connection' before changing databases.")
+            return
         #TODO NEED TO CHECK THAT YOU HAVE A VALID INTERNET CONNECTION, THROW EXCEPTION
         idString = self.dlg.houseidComboBox.currentText()   #get currently selected house ID
         houseId = int(idString.split()[2])  #convert id string to an integer, split string to get at number
@@ -314,9 +321,10 @@ class Window(QtWidgets.QWidget):
         #If the database has no tables initialised in it, initialise the first day for the given ID 
         self.dynaCursor.execute('SELECT name from sqlite_master where type= "table"')
         if self.dynaCursor.fetchall() == [] :
-            self.addLineToConsole("House " + str(houseId) + " data not found, initializing table in database...")
+            self.addLineToConsole("Initializing House" + str(houseId) + "  table in database...")
             self.dynamicDataBase = initialiseRedbackHouse(houseId)
-            self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='fail', index=False)     
+            self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='fail', index=False)   
+            self.dynamicDataBase.commit()  
         self.dynaCursor.execute("SELECT * FROM id" + str(houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
         lastReadDate = self.dynaCursor.fetchone()[6]
         self.addLineToConsole("LAST KNOWN METER READING: " + str(lastReadDate))
@@ -331,19 +339,50 @@ class Window(QtWidgets.QWidget):
             alteredDate = previousDate.replace(hour = 10, minute = 0, second = 0)
             self.dynaCursor.execute("DELETE FROM id" + str(houseId) + " WHERE TimeStamp IN (SELECT TimeStamp FROM id" 
                                     + str(houseId) + " WHERE TimeStamp >= '" + str(alteredDate) + "')")
+            self.dynaConn.commit() 
         else :
             #This is the case where the last reading was before 10:00AM
             #Delete all rows up until 09:59AM on the PREVIOUS day
             alteredDate = previousDate.replace(day = previousDate.day - 1, hour = 10, minute = 0, second = 0)
             self.dynaCursor.execute("DELETE FROM id" + str(houseId) + " WHERE TimeStamp IN (SELECT TimeStamp FROM id" 
                                     + str(houseId) + " WHERE TimeStamp >= '" + str(alteredDate) + "')")
+            self.dynaConn.commit() 
         #The excess rows have been removed and now the database can be back-filled until today
         date = str(datetime.date.today())   #today's date
         startDate = datetime.datetime.strptime(str(alteredDate), "%Y-%m-%d %H:%M:%S")
+        startDate = startDate.replace(hour = 0, minute = 0, second = 0)
         endDate = datetime.datetime.strptime(date, "%Y-%m-%d") #date object that can return day, month, year
-        self.backFillHouseData(startDate, endDate, houseId)
-        testFrame = pandas.read_sql("SELECT * FROM id"+str(houseId), self.dynaConn)
-        testFrame.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\testFrame.csv', header=True)
+        #self.backFillHouseData(startDate, endDate, houseId)
+        self.threadClass1 = ThreadClass(startDate, endDate, houseId, houseDatabaseString)
+        self.threadClass1.start()
+        self.threadRunning = True
+        self.threadClass1.update_Console.connect(self.receiveConsoleUpdates)
+
+    def sendSignalToThread(self, signal):
+        if not self.threadRunning : 
+            return
+        else :
+            self.threadClass1.receive_signal.emit(str(signal))
+    
+    def closeDynamicConnection(self):
+        """Stop the currently running thread and close the connection to the dynamic database
+        """
+        if not self.threadRunning : 
+            return
+        else :
+            self.sendSignalToThread("CLOSE_THREAD")
+            self.threadRunning = False
+
+    def receiveConsoleUpdates(self, updateString):
+        """Receives emitted signals from a thread and send it to the correct console update function.
+
+        Args:
+            updateString: the string that will be added to the console
+        """
+        if int(updateString[0]) == 0 :
+            self.addLineToConsole(updateString[1:])
+        else :
+            self.addRepeatingLineToConsole(updateString[1:])
 
     def backFillHouseData(self, startDate, endDate, houseId):
         """Method that will continually request data from the RedBack server to append to the local database.
@@ -354,46 +393,6 @@ class Window(QtWidgets.QWidget):
             endDate: today, where we want to back-fill up-to.
             houseId: the house number
         """
-        currentDate = startDate
-        delta = endDate - startDate
-        print(delta.days)
-        if delta.days < 10 :
-            deltaString = '00' + str(delta.days)
-        elif delta.days < 100 :
-            deltaString = '0' + str(delta.days)
-        else :
-            deltaString = str(delta.days)
-        self.addLineToConsole("Retrieving missing day 001 of " + deltaString)
-        currentProgress = 0
-        while currentDate < (endDate + datetime.timedelta(days=1)) :
-            if currentProgress != 0:
-                if currentProgress < 10 :
-                    currentProgressString = '00' + str(currentProgress)
-                elif currentProgress < 100 :
-                    currentProgressString = '0' + str(currentProgress)
-                else :
-                    currentProgressString = str(currentProgress)
-                self.addRepeatingLineToConsole("Retrieving missing day " + currentProgressString + " of " + deltaString)
-            if currentDate.day <= 10 :
-                day = '0' + str(currentDate.day)
-            else :
-                day = str(currentDate.day)
-            if currentDate.month <= 10 :
-                month = '0' + str(currentDate.month)
-            else :
-                month = str(currentDate.month)
-            year = str(currentDate.year)
-            df = retrieveMeterData(houseId, day, month, year)
-            df.to_sql("id" + str(houseId), self.dynaConn, if_exists='append', index=False)
-            #Increment the day by one to go to the next iteration
-            print(currentDate)
-            currentDate += datetime.timedelta(days=1)
-            currentProgress = currentProgress + 1
-
-        self.dynaCursor.execute("SELECT * FROM id" + str(houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
-        lastReadDate = self.dynaCursor.fetchone()
-        print(lastReadDate)
-        self.addLineToConsole("Back-fill complete. Data will now be retrieved every minute.")
         dataFrame = retrieveMeterData(1, '04', '10', '2019')
         dataFrame.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\dataFrame.csv', header=True)
 
@@ -405,6 +404,7 @@ class Window(QtWidgets.QWidget):
             lineString: the line that will be 'printed' to the console.
         """
         self.dlg.myConsole.setText(self.dlg.myConsole.toPlainText() + ">> " + str(lineString) + "\n")
+        self.dlg.myConsole.verticalScrollBar().setValue(self.dlg.myConsole.verticalScrollBar().maximum())
         self.dlg.myConsole.repaint()
     
     def addRepeatingLineToConsole(self, lineString):
@@ -417,9 +417,102 @@ class Window(QtWidgets.QWidget):
         newTextLength = len(lineString) + 4 #Add the +4 to account for the >> and the new line character
         newConsoleText = self.dlg.myConsole.toPlainText()[0:(currentConsoleTextLength - newTextLength)]
         self.dlg.myConsole.setText(newConsoleText + ">> " + str(lineString) + "\n")
+        self.dlg.myConsole.verticalScrollBar().setValue(self.dlg.myConsole.verticalScrollBar().maximum())
         self.dlg.myConsole.repaint()
 
 
+class ThreadClass(QtCore.QThread):
+    update_Console = pyqtSignal(str)
+    receive_signal = pyqtSignal(str)
+    startDate = None
+    endDate = None
+    houseId = None
+    connectionString = None
+    dynamicConnection = None
+    dynamicCursor = None
+
+    def __init__(self, startDate, endDate, houseId, connectionString, parent=None):
+        super(ThreadClass,self).__init__(parent)
+        self.receive_signal[str].connect(self.handleReceivedSignals)
+        self.startDate = startDate
+        self.endDate = endDate
+        self.houseId = houseId
+        self.connectionString = connectionString
+        self.create_new_connection(self.connectionString)
+    
+    def handleReceivedSignals(self, command):
+        if command == "CLOSE_THREAD" :
+            self.closeThread()
+        else :
+            print("Signal Received: " + str(command))
+
+    def create_new_connection(self, string):
+        try:
+            self.dynamicConnection = sqlite3.connect(string, check_same_thread=False)   #Set Dynamic Connection
+            self.dynamicCursor = self.dynamicConnection.cursor()   #Set Dyanamic Cursor
+        except Error as e:
+            print(e)        #TODO print errors out to a make shift terminal
+    
+    def unlockDatabase(self, string):
+        self.dynamicConnection = sqlite3.connect(string)
+        self.dynamicConnection.commit()
+        self.dynamicConnection.close()
+        time.sleep(2)
+
+    def run(self):
+        self.retrieveDays()
+        self.unlockDatabase(self.connectionString)
+
+    def closeThread(self):
+        self.update_Console.emit("0Connection successfully closed.")
+        self.quit()
+    
+    def retrieveDays(self):
+        currentDate = self.startDate
+        print(self.startDate)
+        print(self.endDate)
+        delta = self.endDate - self.startDate
+        print(delta.days)
+        if delta.days == 0:
+            deltaString = '001'
+        elif delta.days < 10 :
+            deltaString = '00' + str(delta.days)
+        elif delta.days < 100 :
+            deltaString = '0' + str(delta.days)
+        else :
+            deltaString = str(delta.days)
+        self.update_Console.emit("0Retrieving missing day 001 of " + deltaString)
+        currentProgress = 0
+        
+        self.dynamicCursor.execute("SELECT * FROM id" + str(self.houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
+        print("Before adding: " + self.dynamicCursor.fetchone()[6])
+        
+        while currentDate <= self.endDate :
+            if currentProgress != 0:
+                if currentProgress < 10 :
+                    currentProgressString = '00' + str(currentProgress)
+                elif currentProgress < 100 :
+                    currentProgressString = '0' + str(currentProgress)
+                else :
+                    currentProgressString = str(currentProgress)
+                self.update_Console.emit("1Retrieving missing day " + currentProgressString + " of " + deltaString)
+            if currentDate.day <= 10 :
+                day = '0' + str(currentDate.day)
+            else :
+                day = str(currentDate.day)
+            if currentDate.month <= 10 :
+                month = '0' + str(currentDate.month)
+            else :
+                month = str(currentDate.month)
+            year = str(currentDate.year)
+            df = retrieveMeterData(self.houseId, day, month, year)
+            df.to_sql("id" + str(self.houseId), self.dynamicConnection, if_exists='append', index=False)
+            print("Retrieving day " + str(currentProgress + 1) + ", " + str(currentDate))
+            currentDate += datetime.timedelta(days=1)
+            currentProgress = currentProgress + 1
+            self.dynamicCursor.execute("SELECT * FROM id" + str(self.houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
+            print("After Adding: " + self.dynamicCursor.fetchone()[6])
+        self.update_Console.emit("0Back-fill complete.")
 
 class PandasModel(QtCore.QAbstractTableModel):
     """

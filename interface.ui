@@ -1739,9 +1739,9 @@ border-color: rgb(0, 205, 0);</string>
     <property name="geometry">
      <rect>
       <x>329</x>
-      <y>168</y>
+      <y>154</y>
       <width>246</width>
-      <height>36</height>
+      <height>29</height>
      </rect>
     </property>
     <property name="palette">
@@ -1853,6 +1853,92 @@ p, li { white-space: pre-wrap; }
 &lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-size:8pt;&quot;&gt;&amp;gt;&amp;gt; Starting application...&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="closeDynamicConnectionButton">
+    <property name="geometry">
+     <rect>
+      <x>329</x>
+      <y>189</y>
+      <width>120</width>
+      <height>29</height>
+     </rect>
+    </property>
+    <property name="palette">
+     <palette>
+      <active>
+       <colorrole role="Base">
+        <brush brushstyle="SolidPattern">
+         <color alpha="255">
+          <red>255</red>
+          <green>255</green>
+          <blue>255</blue>
+         </color>
+        </brush>
+       </colorrole>
+       <colorrole role="Window">
+        <brush brushstyle="SolidPattern">
+         <color alpha="255">
+          <red>217</red>
+          <green>255</green>
+          <blue>246</blue>
+         </color>
+        </brush>
+       </colorrole>
+      </active>
+      <inactive>
+       <colorrole role="Base">
+        <brush brushstyle="SolidPattern">
+         <color alpha="255">
+          <red>255</red>
+          <green>255</green>
+          <blue>255</blue>
+         </color>
+        </brush>
+       </colorrole>
+       <colorrole role="Window">
+        <brush brushstyle="SolidPattern">
+         <color alpha="255">
+          <red>217</red>
+          <green>255</green>
+          <blue>246</blue>
+         </color>
+        </brush>
+       </colorrole>
+      </inactive>
+      <disabled>
+       <colorrole role="Base">
+        <brush brushstyle="SolidPattern">
+         <color alpha="255">
+          <red>217</red>
+          <green>255</green>
+          <blue>246</blue>
+         </color>
+        </brush>
+       </colorrole>
+       <colorrole role="Window">
+        <brush brushstyle="SolidPattern">
+         <color alpha="255">
+          <red>217</red>
+          <green>255</green>
+          <blue>246</blue>
+         </color>
+        </brush>
+       </colorrole>
+      </disabled>
+     </palette>
+    </property>
+    <property name="font">
+     <font>
+      <family>Segoe UI Historic</family>
+      <pointsize>10</pointsize>
+      <weight>50</weight>
+      <italic>false</italic>
+      <bold>false</bold>
+     </font>
+    </property>
+    <property name="text">
+     <string>Close Connection</string>
+    </property>
+   </widget>
    <zorder>groupBox</zorder>
    <zorder>importDataButton</zorder>
    <zorder>fileLocation</zorder>
@@ -1892,6 +1978,7 @@ p, li { white-space: pre-wrap; }
    <zorder>groupBox_2</zorder>
    <zorder>connectToHouseButton</zorder>
    <zorder>myConsole</zorder>
+   <zorder>closeDynamicConnectionButton</zorder>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">

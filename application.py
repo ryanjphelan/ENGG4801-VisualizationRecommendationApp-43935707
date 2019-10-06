@@ -1,6 +1,7 @@
 import sys
 import os
 import datetime
+import time
 from functions import *
 from PyQt5 import QtCore, QtGui, QtWidgets, uic
 from PyQt5.QtWidgets import QInputDialog, QLineEdit, QFileDialog, QGridLayout
@@ -39,6 +40,9 @@ class Window(QtWidgets.QWidget):
         self.toolBar = None
         self.fileName = None
         self.query = None
+        self.dlg.myConsole.setFontPointSize(8)
+        self.dlg.myConsole.setText(self.dlg.myConsole.toPlainText() + "\n")
+
     
     def init_ui(self):
         """Import the QtDesigner file and assign functions to each of the UI's buttons.
@@ -64,6 +68,7 @@ class Window(QtWidgets.QWidget):
         fileName = QtWidgets.QFileDialog.getOpenFileName(self, 'OpenFile')
         self.dlg.fileLocation.setText(fileName[0])
         self.fileName = os.path.basename(self.dlg.fileLocation.text())
+
 
     def create_connection(self, db_file):
         """Set objects for conn1 (Connection 1) and cur1 (Connection 1's cursor)
@@ -296,25 +301,125 @@ class Window(QtWidgets.QWidget):
         #    print (view)
 
     def connectToHouse(self):
+        #TODO NEED TO CHECK THAT YOU HAVE A VALID INTERNET CONNECTION, THROW EXCEPTION
         idString = self.dlg.houseidComboBox.currentText()   #get currently selected house ID
         houseId = int(idString.split()[2])  #convert id string to an integer, split string to get at number
-        date = str(datetime.date.today())   #today's date
-        currentDate = datetime.datetime.strptime(date, "%Y-%m-%d") #date object that can return day, month, year
+        self.addLineToConsole("Connecting to House " + str(houseId) + "...")
         #Check that the databases folder exists, if not, create it
         if not os.path.isdir('./databases') :
             os.mkdir("./databases")
         #Connect to the dynamic dataset, the name of the database will be based on the house ID
         houseDatabaseString = "databases/id" + str(houseId) + ".db"
         self.create_dynamic_connection(houseDatabaseString)
-        #If the database is empty, initialise the first day for the given ID 
-        result = self.dynaCursor.fetchone()
-        if result == None :
+        #If the database has no tables initialised in it, initialise the first day for the given ID 
+        self.dynaCursor.execute('SELECT name from sqlite_master where type= "table"')
+        if self.dynaCursor.fetchall() == [] :
+            self.addLineToConsole("House " + str(houseId) + " data not found, initializing table in database...")
             self.dynamicDataBase = initialiseRedbackHouse(houseId)
-            self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='fail', index=False)
-            
-        self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='append', index=False)
+            self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='fail', index=False)     
+        self.dynaCursor.execute("SELECT * FROM id" + str(houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
+        lastReadDate = self.dynaCursor.fetchone()[6]
+        self.addLineToConsole("LAST KNOWN METER READING: " + str(lastReadDate))
+        self.dynaCursor.execute("SELECT * FROM id" + str(houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
+        lastReadDate = self.dynaCursor.fetchone()[6]
+        previousDate = datetime.datetime.strptime(lastReadDate, "%Y-%m-%d %H:%M:%S")
+        if previousDate.hour == 9 and previousDate.minute == 59 :
+            alteredDate = str(previousDate)
+        elif previousDate.hour >= 10 and previousDate.minute >= 0 :
+            #This is the case where the last reading was after 10:00AM on that day
+            #Delete all rows up until 09:59AM
+            alteredDate = previousDate.replace(hour = 10, minute = 0, second = 0)
+            self.dynaCursor.execute("DELETE FROM id" + str(houseId) + " WHERE TimeStamp IN (SELECT TimeStamp FROM id" 
+                                    + str(houseId) + " WHERE TimeStamp >= '" + str(alteredDate) + "')")
+        else :
+            #This is the case where the last reading was before 10:00AM
+            #Delete all rows up until 09:59AM on the PREVIOUS day
+            alteredDate = previousDate.replace(day = previousDate.day - 1, hour = 10, minute = 0, second = 0)
+            self.dynaCursor.execute("DELETE FROM id" + str(houseId) + " WHERE TimeStamp IN (SELECT TimeStamp FROM id" 
+                                    + str(houseId) + " WHERE TimeStamp >= '" + str(alteredDate) + "')")
+        #The excess rows have been removed and now the database can be back-filled until today
+        date = str(datetime.date.today())   #today's date
+        startDate = datetime.datetime.strptime(str(alteredDate), "%Y-%m-%d %H:%M:%S")
+        endDate = datetime.datetime.strptime(date, "%Y-%m-%d") #date object that can return day, month, year
+        self.backFillHouseData(startDate, endDate, houseId)
         testFrame = pandas.read_sql("SELECT * FROM id"+str(houseId), self.dynaConn)
         testFrame.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\testFrame.csv', header=True)
+
+    def backFillHouseData(self, startDate, endDate, houseId):
+        """Method that will continually request data from the RedBack server to append to the local database.
+        This method assumes that the current last-row in the database is 09:59AM on the day of startDate.
+
+        Args:
+            startDate: the last known date for this database.
+            endDate: today, where we want to back-fill up-to.
+            houseId: the house number
+        """
+        currentDate = startDate
+        delta = endDate - startDate
+        print(delta.days)
+        if delta.days < 10 :
+            deltaString = '00' + str(delta.days)
+        elif delta.days < 100 :
+            deltaString = '0' + str(delta.days)
+        else :
+            deltaString = str(delta.days)
+        self.addLineToConsole("Retrieving missing day 001 of " + deltaString)
+        currentProgress = 0
+        while currentDate < (endDate + datetime.timedelta(days=1)) :
+            if currentProgress != 0:
+                if currentProgress < 10 :
+                    currentProgressString = '00' + str(currentProgress)
+                elif currentProgress < 100 :
+                    currentProgressString = '0' + str(currentProgress)
+                else :
+                    currentProgressString = str(currentProgress)
+                self.addRepeatingLineToConsole("Retrieving missing day " + currentProgressString + " of " + deltaString)
+            if currentDate.day <= 10 :
+                day = '0' + str(currentDate.day)
+            else :
+                day = str(currentDate.day)
+            if currentDate.month <= 10 :
+                month = '0' + str(currentDate.month)
+            else :
+                month = str(currentDate.month)
+            year = str(currentDate.year)
+            df = retrieveMeterData(houseId, day, month, year)
+            df.to_sql("id" + str(houseId), self.dynaConn, if_exists='append', index=False)
+            #Increment the day by one to go to the next iteration
+            print(currentDate)
+            currentDate += datetime.timedelta(days=1)
+            currentProgress = currentProgress + 1
+
+        self.dynaCursor.execute("SELECT * FROM id" + str(houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
+        lastReadDate = self.dynaCursor.fetchone()
+        print(lastReadDate)
+        self.addLineToConsole("Back-fill complete. Data will now be retrieved every minute.")
+        dataFrame = retrieveMeterData(1, '04', '10', '2019')
+        dataFrame.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\dataFrame.csv', header=True)
+
+
+    def addLineToConsole(self, lineString):
+        """Method that takes a string and adds it to the makeshift console text-box.
+
+        Args:
+            lineString: the line that will be 'printed' to the console.
+        """
+        self.dlg.myConsole.setText(self.dlg.myConsole.toPlainText() + ">> " + str(lineString) + "\n")
+        self.dlg.myConsole.repaint()
+    
+    def addRepeatingLineToConsole(self, lineString):
+        """Method removes the previous line from the console and adds lineString in its place.
+        THIS METHOD ASSUMES THE CURRENT LAST-STRING IS THE SAME LENGTH AS THE STRING BEING ADDED.
+        Args:
+            lineString: the line that will be 'printed' to the console.
+        """
+        currentConsoleTextLength = len(self.dlg.myConsole.toPlainText())
+        newTextLength = len(lineString) + 4 #Add the +4 to account for the >> and the new line character
+        newConsoleText = self.dlg.myConsole.toPlainText()[0:(currentConsoleTextLength - newTextLength)]
+        self.dlg.myConsole.setText(newConsoleText + ">> " + str(lineString) + "\n")
+        self.dlg.myConsole.repaint()
+
+
 
 class PandasModel(QtCore.QAbstractTableModel):
     """

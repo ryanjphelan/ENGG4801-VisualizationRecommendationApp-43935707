@@ -4,21 +4,6 @@ import urllib
 import io
 
 def redBackRequest():
-	# Testing the link that Richard sent through
-	# url = 'https://researchutility.azurewebsites.net/api/CacheData?'
-	# params = {'code': 'y5RqGFU35pBrAoxxNJCDcRm9fHoB2Du73CZijgzaHD0U7BkOK1rn8g', 
-	# 			'startTimeUtc': '2019-05-01%20:00:01', 'endTimeUtc': '2019-05-01%20:00:40',
-	# 			'distributionTransformer': 'SC521558-A-TR1', 'caller': 'Ryan', 'append': 'false'}
-	# #Fails on next line -->
-	# r = requests.post(url, params=params)
-	# with open('response2.json', encoding='utf-8-sig') as f_input:
-	# 	df = pd.read_json(f_input)
-	
-	# df.to_csv('response2.csv', encoding='utf-8', index=False)
-
-	#testing parsing of a url to extract the parameters
-	#o = urllib.parse.urlparse('https://ouijalitedatarequest.azurewebsites.net/api/DataCacheRequest?day=08&month=09&year=2019&housenumber=1&code=hQ1gF6gA0Bo5zn/i4NkBWutZ/3nA0a5LUFAHUFNLKD8f5IV2Uac4FA==')
-	#print(o)
 	"""
 	Below is a method for getting at query parameters.
 	So essentially it does the same thing at Postman does.
@@ -47,6 +32,7 @@ def redBackRequest():
 	#print(r.json())
 	#df = pd.read_csv(io.StringIO(r.content.decode('utf-8')))
 	#print(df)
+	'''Method below gets 1 month's worth of data'''
 	url = "https://ouijalitedatarequest.azurewebsites.net/api/DataCacheRequest?"
 	df = pd.DataFrame() #new blank dataframe
 
@@ -70,7 +56,6 @@ def redBackRequest():
 	csv = df.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\House2.csv', 
 					index = None, header=True)
 		
-
 redBackRequest()
 
 

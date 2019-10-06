@@ -109,6 +109,27 @@ def initialiseRedbackHouse(houseId):
     df = pd.DataFrame.from_dict(r.json())
     return df
 
+def retrieveMeterData(houseId, day, month, year):
+    """Retrieve a day's worth of metering data from the server.
+
+    Args:
+        id: the house id as an int
+        day: the day as a string
+        month: the month as a string
+        year: the year as a string
+
+    Return:
+        Pandas dataframe containing the data for the requested day
+    """
+    housenumber = str(houseId)
+    url = "https://ouijalitedatarequest.azurewebsites.net/api/DataCacheRequest?"
+    code = 'hQ1gF6gA0Bo5zn/i4NkBWutZ/3nA0a5LUFAHUFNLKD8f5IV2Uac4FA=='
+    df = pd.DataFrame()
+    params = {'day':day,'month':month,'year':year,'housenumber':housenumber,'code':code}
+    r = requests.get(url, params=params)
+    df = pd.DataFrame.from_dict(r.json())
+    return df
+
 
     
 

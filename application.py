@@ -321,10 +321,10 @@ class Window(QtWidgets.QWidget):
         #If the database has no tables initialised in it, initialise the first day for the given ID 
         self.dynaCursor.execute('SELECT name from sqlite_master where type= "table"')
         if self.dynaCursor.fetchall() == [] :
-            self.addLineToConsole("Initializing House" + str(houseId) + "  table in database...")
+            self.addLineToConsole("Initializing House " + str(houseId) + " table in database...")
             self.dynamicDataBase = initialiseRedbackHouse(houseId)
             self.dynamicDataBase.to_sql("id" + str(houseId), self.dynaConn, if_exists='fail', index=False)   
-            self.dynamicDataBase.commit()  
+            self.dynaConn.commit()  
         self.dynaCursor.execute("SELECT * FROM id" + str(houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
         lastReadDate = self.dynaCursor.fetchone()[6]
         self.addLineToConsole("LAST KNOWN METER READING: " + str(lastReadDate))
@@ -426,10 +426,13 @@ class ThreadClass(QtCore.QThread):
     receive_signal = pyqtSignal(str)
     startDate = None
     endDate = None
+    lastDate = None
+    secondsDifference = 60
     houseId = None
     connectionString = None
     dynamicConnection = None
     dynamicCursor = None
+    loopingData = False
 
     def __init__(self, startDate, endDate, houseId, connectionString, parent=None):
         super(ThreadClass,self).__init__(parent)
@@ -461,18 +464,127 @@ class ThreadClass(QtCore.QThread):
 
     def run(self):
         self.retrieveDays()
+        #self.repeatedlyGetDataToTest()
+        self.loopReceivingData()
         self.unlockDatabase(self.connectionString)
 
     def closeThread(self):
+        self.loopingData = False
+        self.update_Console.emit("0-----------------")
         self.update_Console.emit("0Connection successfully closed.")
         self.quit()
+
+    def repeatedlyGetDataToTest(self):
+        count = 1
+        while self.loopingData:
+            print("Trying to get new data..." + str(count))
+            count = count + 1
+            newData = retrieveMeterData(self.houseId, '07', '10', '2019')
+            now = datetime.datetime.now()   #today's date
+            now = now.replace(microsecond = 0)
+            theTimeIsNow = datetime.datetime.strptime(str(now), "%Y-%m-%d %H:%M:%S")
+            for i in range(-3,0):
+                dateOfReading = datetime.datetime.strptime(str(newData['TimeStamp'].iloc[i]), "%Y-%m-%d %H:%M:%S")
+                if dateOfReading > self.lastDate :
+                    print("New data: " + str(newData['TimeStamp'].iloc[i]) + "  Current time: " + str(theTimeIsNow))
+                    count = 1
+            self.lastDate = datetime.datetime.strptime(str(newData['TimeStamp'].iloc[-1]), "%Y-%m-%d %H:%M:%S")
+            time.sleep(1)
+
+    def loopReceivingData(self):
+        self.update_Console.emit("0Beginning dynamic connection. New data will be appended every interval.")
+        self.update_Console.emit("0-----------------")
+        time.sleep(2)
+        self.update_Console.emit("0House " + str(self.houseId) + " data received: " + str(self.lastDate))
+        while self.loopingData:
+            newData = self.getLatestData()
+            if newData is None:
+                #no new data was found, wait 5 seconds and try again.
+                time.sleep(10)
+                newData = self.getLatestData()
+                if newData is None:
+                    time.sleep(20)
+                    newData = self.getLatestData()
+                    if newData is None:
+                        #That's enough, stop it and just wait another round for the next batch.
+                        time.sleep(self.secondsDifference - 30)
+                    else:
+                        for index, row in newData.iterrows():
+                            self.update_Console.emit("0House " + str(self.houseId) + " data received: " + str(row[6]))
+                        newData.to_sql("id" + str(self.houseId), self.dynamicConnection, if_exists='append', index=False)
+                else:
+                    for index, row in newData.iterrows():
+                        self.update_Console.emit("0House " + str(self.houseId) + " data received: " + str(row[6]))
+                    newData.to_sql("id" + str(self.houseId), self.dynamicConnection, if_exists='append', index=False)
+                    time.sleep(self.secondsDifference - 10)
+            else:
+                #new rows have been found, append them to the database then .
+                for index, row in newData.iterrows():
+                    self.update_Console.emit("0House " + str(self.houseId) + " data received: " + str(row[6]))
+                newData.to_sql("id" + str(self.houseId), self.dynamicConnection, if_exists='append', index=False)
+                time.sleep(self.secondsDifference)
+            #At the end of this function, update the lastDate to be the last line of the database.
+            
+
+    def getLatestData(self):
+        """Method retrieves the latest possible data from the server. Only returns a one (or more) lines
+
+        Returns:
+            newData: a pandas dataframe containing new data from the server, if no new data, returns none.
+        """
+        previousDay = self.lastDate - datetime.timedelta(days=1)
+        if self.lastDate.hour >= 10 and self.lastDate.minute >= 0 :
+            day = self.lastDate.day
+            if day <= 10 :
+                dayString = '0' + str(day)
+            else :
+                dayString = str(day)
+            if self.lastDate.month <= 10 :
+                month = '0' + str(self.lastDate.month)
+            else :
+                month = str(self.lastDate.month)
+            year = str(self.lastDate.year)
+        else :
+            day = previousDay.day
+            if day <= 10 :
+                dayString = '0' + str(day)
+            else :
+                dayString = str(day)
+            if previousDay.month <= 10 :
+                month = '0' + str(previousDay.month)
+            else :
+                month = str(previousDay.month)
+            year = str(previousDay.year)
+        newData = retrieveMeterData(self.houseId, dayString, month, year)
+        newDataOnly = pandas.DataFrame()
+        #Maybe only loop through the last 5 rows? Kind jib but it would definitely work.
+        print("Getting data, last reading: " + str(self.lastDate) + " new reading: " + str(newData['TimeStamp'].iloc[-1]))
+        for i in range(-3,0):
+            dateOfReading = datetime.datetime.strptime(str(newData['TimeStamp'].iloc[i]), "%Y-%m-%d %H:%M:%S")
+            if dateOfReading > self.lastDate :
+                print("New data found: " + str(newData['TimeStamp'].iloc[i]))
+                newDataOnly = newDataOnly.append(newData.iloc[i])
+        if newDataOnly.empty:
+            return None #there is no new data, return none and let other function wait to retrieve next data.
+        else:
+            #This is where we need to check the number of seconds between now and the last reading. It will always be in the past.
+            #So this means we just need to get the number of seconds between this and now, subtract another 5, then subtract that from 60.
+            self.lastDate = datetime.datetime.strptime(str(newDataOnly['TimeStamp'].iloc[-1]), "%Y-%m-%d %H:%M:%S")
+            preferredReadDate = self.lastDate + datetime.timedelta(0,33) #chuck on 33 seconds to ensure it works.
+            now = datetime.datetime.now()   #today's date
+            now = now.replace(microsecond = 0)
+            theTimeIsNow = datetime.datetime.strptime(str(now), "%Y-%m-%d %H:%M:%S")
+            self.secondsDifference = 60 - (theTimeIsNow-preferredReadDate).total_seconds()
+            if self.secondsDifference < 10 : self.secondsDifference = 10
+            print("Last:      " + str(self.lastDate) + "\nPreferred: " + str(preferredReadDate) + 
+                    "\nNow:        " + str(theTimeIsNow) + "\nSeconds Difference: " + str(self.secondsDifference))
+            return newDataOnly
+
+        
     
     def retrieveDays(self):
         currentDate = self.startDate
-        print(self.startDate)
-        print(self.endDate)
         delta = self.endDate - self.startDate
-        print(delta.days)
         if delta.days == 0:
             deltaString = '001'
         elif delta.days < 10 :
@@ -483,10 +595,6 @@ class ThreadClass(QtCore.QThread):
             deltaString = str(delta.days)
         self.update_Console.emit("0Retrieving missing day 001 of " + deltaString)
         currentProgress = 0
-        
-        self.dynamicCursor.execute("SELECT * FROM id" + str(self.houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
-        print("Before adding: " + self.dynamicCursor.fetchone()[6])
-        
         while currentDate <= self.endDate :
             if currentProgress != 0:
                 if currentProgress < 10 :
@@ -507,11 +615,13 @@ class ThreadClass(QtCore.QThread):
             year = str(currentDate.year)
             df = retrieveMeterData(self.houseId, day, month, year)
             df.to_sql("id" + str(self.houseId), self.dynamicConnection, if_exists='append', index=False)
-            print("Retrieving day " + str(currentProgress + 1) + ", " + str(currentDate))
             currentDate += datetime.timedelta(days=1)
             currentProgress = currentProgress + 1
-            self.dynamicCursor.execute("SELECT * FROM id" + str(self.houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
-            print("After Adding: " + self.dynamicCursor.fetchone()[6])
+        #Get the current 'last line' of the database and use it to set the self.liveDate
+        self.dynamicCursor.execute("SELECT * FROM id" + str(self.houseId) + " ORDER BY TimeStamp DESC LIMIT 1")
+        self.lastDate = datetime.datetime.strptime(str(self.dynamicCursor.fetchone()[6]), "%Y-%m-%d %H:%M:%S")
+        print("lastDate = " + str(self.lastDate))
+        self.loopingData = True
         self.update_Console.emit("0Back-fill complete.")
 
 class PandasModel(QtCore.QAbstractTableModel):

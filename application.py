@@ -465,6 +465,8 @@ class ThreadClass(QtCore.QThread):
     def run(self):
         self.retrieveDays()
         #self.repeatedlyGetDataToTest()
+        dataFrame = retrieveMeterData(1, '04', '10', '2019')
+        dataFrame.to_csv(r'C:\Users\Ryan Phelan\Desktop\ENGG4801\ENGG4801_RyanPhelan\dataFrame.csv', header=True)
         self.loopReceivingData()
         self.unlockDatabase(self.connectionString)
 

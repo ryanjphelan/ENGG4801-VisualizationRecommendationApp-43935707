@@ -21,13 +21,11 @@ class MplWidget(QWidget):
 			self.vertical_layout = QVBoxLayout() 
 			self.vertical_layout.addStretch(1)
 			#self.canvas.axes = self.canvas.figure.add_subplot(111) 
-			
-			#TOOLBAR, not currently in use.
-			#self.toolbar = NavigationToolbar(self.canvas, self)
-			#self.vertical_layout.addWidget(self.toolbar, stretch=0)
 
 			self.vertical_layout.addWidget(self.canvas, QtCore.Qt.AlignTop)
 			self.k = None
+			self.toolbar = NavigationToolbar(self.canvas, self)
+			self.vertical_layout.addWidget(self.toolbar, stretch=0)
 
 			self.setLayout(self.vertical_layout)
 			#self.addToolBar(NavigationToolbar(self.MplWidget.canvas, self))

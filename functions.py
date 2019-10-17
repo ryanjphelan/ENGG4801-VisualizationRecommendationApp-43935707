@@ -23,10 +23,21 @@ def generateQueriesAsViewTuples(d, f, m, Dq, Dr):
         for j in range(len(f)):
             for k in range(len(m)):
                 # Create the queries as strings
-                targetView = "SELECT \"" + str(d[i]) + "\", " + str(f[j]) + "(\"" + \
-                    str(m[k]) + "\") FROM " + str(Dq) + " GROUP BY \"" + str(d[i]) + "\""
-                referenceView = "SELECT \"" + str(d[i]) + "\", " + str(f[j]) + "(\"" + \
-                    str(m[k]) + "\") FROM " + str(Dr) + " GROUP BY \"" + str(d[i]) + "\""
+                redbackDimensions = ["strftime('%m', 'TimeStamp')", "strftime('%H', 'TimeStamp')", "strftime('%w', 'TimeStamp')"]
+                abs1 = ""
+                abs2 = ""
+                dim = ""
+                if str(m[k]) == "PowerFactor" :
+                    abs1 = "(abs"
+                    abs2 = ")" 
+                elif d[i] == "strftime('%m', 'TimeStamp')" or d[i] == "strftime('%H', 'TimeStamp')" or d[i] == "strftime('%w', 'TimeStamp')" :
+                    dim = d[i]
+                else :
+                    dim = "\"" + d[i] + "\""
+                targetView = "SELECT " + str(d[i]) + ", " + str(f[j]) + abs1 + "(\"" + \
+                    str(m[k]) + "\"" + abs2 + ") FROM " + str(Dq) + " GROUP BY " + str(d[i])
+                referenceView = "SELECT " + str(d[i]) + ", " + str(f[j]) + abs1 + "(\"" + \
+                    str(m[k]) + "\"" + abs2 + ") FROM " + str(Dr) + " GROUP BY " + str(d[i])
                 view = (targetView, referenceView)
                 generatedQueries.append(view)
     # Return the list of views

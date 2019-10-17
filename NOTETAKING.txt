@@ -1,0 +1,75 @@
+I think I might need to generate queries that apply a MONTH grouping onto the data.
+oh and also maybe an HOUR.
+month and hour are pretty good. that should generate some nice visualizations.
+
+
+SELECT MONTH(TimeStamp), AVG(GridVoltage) FROM id1 GROUP BY MONTH(TimeStamp)
+SELECT 
+
+
+Month is good, Hour is good, year not so much, day is okay, but I think hour is and month is more useful.
+
+okay so I'll just need like
+
+SELECT strftime('%m', TimeStamp), AVG(GridVoltage) FROM id1 GROUP BY strftime('%m', TimeStamp)
+SELECT strftime('%H', TimeStamp), AVG(GridVoltage) from id1 GROUP BY strftime('%H', TimeStamp)
+
+This will be useful, so essentially I'll need twice as many queries, but they'll be much more useful.
+Wait actually this'll be fine because it's basically the only dimension anyway.
+It's as if you're adding in a other dimension which is good for the sake of generating visualizations.
+
+Oh something big, definitely ignore any dimensions or measures that are left in the columns box.
+This will be an elegant way to ignore stuff like impedance which we know is bullshit.
+
+Power Factor needs to be absolute. It is useless otherwise, just apply the ABS function.
+
+Maybe we can have a set dimension and measure list for the user.
+Cause like, why not. What's the point of having it be otherwise.
+Then again, voltage would be kinda cool to have. But it would have to be in buckets
+
+Aight so when the dynamic connection begins, automatically assign the dimensions and measures.
+
+When the dynamic connection is open, 
+
+Okay just take a step back for a second though.
+You don't need to thoroughly explore every single type of query that can be generated or analysed.
+Your job is to build a piece of software that could be used to theoretically analyse this type of data.
+If you come up with good visualizations, well that's a bonus. Focus on just analysing the queries.
+
+To make this work REALLY well, you should be adding new data to:
+1. your base database, i.e. your normal "id1", you will ALWAYS add to this (already implemented)
+2. your target database (if the new data falls into the category).
+3. your reference database (if the new data again falls into this category).
+
+What this means is :
+--> Establish the connection.
+--> Begin pulling fresh data every minute.
+--> When the user defines their query for defining a target database, 
+	1. Run the query on the 
+
+
+
+
+SELECT strftime('%m', TimeStamp), AVG(GridVoltage) FROM id1 GROUP BY strftime('%m', TimeStamp)
+SELECT * FROM id4 WHERE strftime('%m', TimeStamp) < 8
+
+
+Okay so I have currently have an app that dynamically connects to the API and retrieves data every minute.
+I need to now analyse the data whenever I so desire.
+It think it will be good to have my database be 
+
+Okay so the read function is good. No worries there.
+I can read from the threaded database and for that matter I can read from all of my created databases whenever I want.
+
+the names of your databases can be standardised.
+id1
+id1target
+id1reference
+
+Your user will only really be using the bottom two databases and they will have connections to both.
+They will be performing read operations so it shouldn't be a worry, however, they might overlap with each other, so try again in like 1 second.
+The writing to the base database will definitely be very quick, it's only one line.
+When the user defines their query they will be creating 
+
+By default, the reference database will be the complement of the result of the users query. On average this will yield better visualizations.
+By default, the application will NOT generate visualizations every interval. It will only add data to the databases every interval.
